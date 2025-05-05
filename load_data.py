@@ -1,8 +1,9 @@
 import numpy as np
 import torch
+import torchio
 import SimpleITK as sitk
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from skimage.filters import threshold_otsu
 import matplotlib.pyplot as plt
 
@@ -29,39 +30,46 @@ class ZScoreNormalize:
             normalized.append(normed)
         return torch.stack(normalized)
   
-def show_image(img_tensor, title=None):
+def show_image(img_tensor):
     # Detach from graph and move to CPU if needed
     img = img_tensor.detach().cpu()
 
-    # Convert to (H, W, C) for Matplotlib
     if img.shape[0] == 3:
         img = img.permute(1, 2, 0)
     elif img.shape[0] == 1:
         img = img.squeeze(0)
 
-    # Display
     plt.imshow(img.numpy(), cmap='gray' if img.ndim == 2 else None)
-    if title:
-        plt.title(title)
     plt.axis('off')
     plt.show()
 
-def load_data(path = "data_set\Medical Imaging Dataset"):
+def load_data(path = "data_set\Medical Imaging Dataset", batch_size = 1):
 
   transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     OtsuTransform(), # Background Removal
     transforms.GaussianBlur(kernel_size = 3, sigma = 1.0), #denoising
+    #Resampling,
+    #Registrantion,
     ZScoreNormalize(),
-    # transforms.Normalize(mean=[0.485, 0.456, 0.406],
-    #                 std=[0.229, 0.224, 0.225])
   ])
 
   dataset = datasets.ImageFolder(path, transform)
 
-  dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
+  print(dataset[1500])
 
-  show_image(dataloader.dataset[0][0])
+  # pretrain_dataset = Subset(dataset, pretrain_indices)
+  # walker_dataset = Subset(dataset, walker_w)
 
-load_data()
+  # pretrain_dataloader = DataLoader(pretrain_dataset, batch_size, shuffle=True)
+  # walker_dataloader = DataLoader(walker_dataset, batch_size, shuffle=True)
+
+  dataloader = DataLoader(dataset, batch_size, shuffle = True)
+
+  return dataset, dataloader#pretrain_dataloader, walker_dataloader
+
+
+dataset, dataloader = load_data()
+
+
