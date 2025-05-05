@@ -28,14 +28,14 @@ for root, dirs, files in os.walk(path):
     print(dirs)
     j = 0
     for i, file in enumerate(files):
-        print("file: ", file)
-        rename = f"disease_{j}.zip"
-        old = os.path.join(path,file)
-        new = os.path.join(path, rename)
-        os.rename(old, new)
+        
         
         if i in indices:
-            
+            print("file: ", file)
+            rename = f"disease_{j}.zip"
+            old = os.path.join(path,file)
+            new = os.path.join(path, rename)
+            os.rename(old, new)
             extract_to_path = os.path.join("data_set", new).replace(".zip", "")
 
             disease_names.append(file.removesuffix('.zip'))
@@ -45,10 +45,10 @@ for root, dirs, files in os.walk(path):
             with zipfile.ZipFile(new, 'r') as zipref:
                 zipref.extractall(extract_to_path)
             
-            for  r,_,fs in os.walk(extract_to_path):
-                for r_,_,fs_ in os.walk(os.join(root, fs[0])):
-                    for f in fs_:
-                        shutil.move(os.path.join(root,f),extract_to_path)
+            # for  r,d,fs in os.walk(extract_to_path):
+            #     for r_,d_,fs_ in os.walk(os.path.join(root, d[0])):
+            #         for f in fs_:
+            #             shutil.move(os.path.join(root,f),extract_to_path)
         
         #os.remove(new)
         
