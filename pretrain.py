@@ -53,9 +53,10 @@ for epoch in range(epochs):
 
     total_loss += loss.item()
   elapsed_time = time.perf_counter()
-  print(f"Epoch {epoch + 1}: loss = {total_loss/len(pretrain_train):.4f}, took: {convert5(elapsed_time - start_time)}")
+  print(f"Epoch {epoch + 1}: loss = {total_loss/len(pretrain_train):.4f}, took: {convert(elapsed_time - start_time)}")
 
 total = 0
+correct = 0
 #Test Pretrain
 model.eval()
 for imgs, labels in pretrain_test:
