@@ -73,7 +73,7 @@ def show_image(img_tensor):
     plt.axis('off')
     plt.show()
 
-def load_data(path = "data_set\Medical Imaging Dataset", batch_size = 1, holdout = 'Walker-Warburg'):
+def load_data(path = "data_set/Medical Imaging Dataset", batch_size = 1, holdout = 'Walker-Warburg'):
   '''
   Loads and transforms data in path
 
@@ -100,7 +100,7 @@ def load_data(path = "data_set\Medical Imaging Dataset", batch_size = 1, holdout
   nontarget_indices = [i for i, (path, _) in enumerate(dataset.samples) if i not in target_indices]
   nontarget_labels = [i for i in range(19) if i != target_label]
 
-  target_map = {target_label: 0}
+  target_map = {target_label: 1}
   nontarget_map = {old: new for new, old in enumerate(list(nontarget_labels))}
 
   nontarget_dataset = Subset(dataset, nontarget_indices)
@@ -202,21 +202,11 @@ dataset\Medical Imaging Dataset
 '''
 if __name__ == '__main__':
   start = time.perf_counter()
-  p, h, p_map, h_map = load_data()
+  nontarget_data, target_data, nontarget_map, target_map = load_data()
   time_elapsed = time.perf_counter() - start
   print(f"took: {convert(time_elapsed)} to load data" )
-  ten, ninety = get_split(p,  store_indices=True)
+  ten, ninety = get_split(nontarget_data,  store_indices=True)
   time_elapsed = time.perf_counter() - start
   print(f"took: {convert(time_elapsed)} to load data" )
-  print(f"{100 * (len(ninety)/ len(p)):.2f}% pretrain")
-  print(f"{100 * (len(ten) / len(p)):.2f}% true negatives")
-
-  #p, h, _, _ = load_data()
-
-  pretrain = load_indices(p, "splits/pretrain_indices.json")
-  true_neg = load_indices(p, "splits/true_neg_indices.json")
-
-  print(len(pretrain), len(true_neg))
-  
-
-
+  print(f"{100 * (len(ninety)/ len(nontarget_data)):.2f}% pretrain")
+  print(f"{100 * (len(ten) / len(nontarget_data)):.2f}% true negatives")
