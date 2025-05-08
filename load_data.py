@@ -6,6 +6,12 @@ from torchvision import datasets, transforms
 from torch.utils.data import Dataset, DataLoader, Subset, random_split
 from skimage.filters import threshold_otsu
 import matplotlib.pyplot as plt
+from collections import defaultdict
+import random
+import time
+from utils import convert
+import os
+import json
 
 
 #Backgroud Rmoval
@@ -69,10 +75,13 @@ def show_image(img_tensor):
 
 def load_data(path = "data_set\Medical Imaging Dataset", batch_size = 1, holdout = 'Walker-Warburg'):
   '''
-  Loads and transforms data in path.
-  Returns: 
-    pretrain_dataset: set of all images used for pretraining
-    holdout_dataset: set of images used for fewshot and self supervised learning
+  Loads and transforms data in path
+
+  Returns 
+  - nontarget_dataset: set of all images belonging to diseases that are not "holdout"
+  - target_dataset: set of images for "holdout" disease
+  - nontarget_map: maps nontarget disease from original index to index in range(18) - MAY NOT BE USED
+  - target_map: maps original target disease index to 0 - MAY NOT BE USED
   '''
 
   transform = transforms.Compose([
@@ -86,21 +95,90 @@ def load_data(path = "data_set\Medical Imaging Dataset", batch_size = 1, holdout
 
   dataset = datasets.ImageFolder(path, transform)
 
-  holdout_indices = [i for i, (path, _) in enumerate(dataset.samples) if holdout in path]
-  holdout_label = dataset[holdout_indices[0]][1]
-  pretrain_indices = [i for i, (path, _) in enumerate(dataset.samples) if i not in holdout_indices]
-  pretrain_labels = [i for i in range(19) if i != holdout_label]
+  target_indices = [i for i, (path, _) in enumerate(dataset.samples) if holdout in path]
+  target_label = dataset[target_indices[0]][1]
+  nontarget_indices = [i for i, (path, _) in enumerate(dataset.samples) if i not in target_indices]
+  nontarget_labels = [i for i in range(19) if i != target_label]
 
-  holdout_map = {holdout_label: 0}
-  pretrain_map = {old: new for new, old in enumerate(list(pretrain_labels))}
+  target_map = {target_label: 0}
+  nontarget_map = {old: new for new, old in enumerate(list(nontarget_labels))}
 
-  pretrain_dataset = Subset(dataset, pretrain_indices)
-  holdout_dataset = Subset(dataset, holdout_indices)
+  nontarget_dataset = Subset(dataset, nontarget_indices)
+  target_dataset = Subset(dataset, target_indices)   
 
-  return RelabeledData(pretrain_dataset, pretrain_map), RelabeledData(holdout_dataset, holdout_map), pretrain_map, holdout_map
+  return RelabeledData(nontarget_dataset, nontarget_map), RelabeledData(target_dataset, target_map), nontarget_map, target_map
 
+def load_indices(dataset, indices_file):
+  '''
+  Loads dataset containing only provided indices of full dataset
+  '''
+
+  with open(indices_file, "r") as f:
+    indices = json.load(f)
+
+  subset = Subset(dataset, indices)
+   
+  return subset
+
+def get_split(dataset, split_val = .1, map_zero = True, store_indices = False, seed = 100):
+  '''
+
+  Splits data into two sets, either N of each class or % of each class
+
+  Use split_point = .1 to get 
+  - (true_neg, pretrain) as returns with dataset = set A 
+  - (true_pos, unlabeled) with dataset = set B
+
+  Use split_point = 5 to get 
+  - (neg_finetune, neg_test) as returns with dataset = true_neg 
+  - (few_shot, pos_test) with dataset = true_pos
+  '''
+  split_by_int = isinstance(split_val, int)
+  
+  zero_map = {old: 0 for old in range(18)}
+
+  class_to_indices = defaultdict(list)
+  for idx, (_, label) in enumerate(dataset):
+      class_to_indices[label].append(idx)
+
+  # Shuffle and split
+  subset1_indices = []
+  subset2_indices = []
+
+  random.seed(seed)
+  for label, indices in class_to_indices.items():
+      random.shuffle(indices)
+      
+      split_point = split_val if split_by_int else int(len(indices) * split_val) 
+      
+      subset1_indices.extend(indices[:split_point])
+      subset2_indices.extend(indices[split_point:])
+
+  # Create subset objects
+  subset1 = Subset(dataset, subset1_indices)
+  subset1 = RelabeledData(subset1, zero_map) if map_zero else subset1
+  subset2 = Subset(dataset, subset2_indices)
+
+  if store_indices:
+     with open("splits/true_neg_indices.json", "w") as f:
+        json.dump(subset1_indices, f)
+     with open("splits/pretrain_indices.json", "w") as f:
+        json.dump(subset2_indices, f) 
+  return subset1, subset2
 
 def load_train_test(dataset, train_percent = .8, batchsize = 1):
+  '''
+  Loads the training and testing set for pretraining
+
+  Parameters
+  - dataset: original dataset to be split into train and test
+  - train_percent: percent of samples from dataset to be used for training
+  - batchsize: batchsize
+
+  Returns
+  - trainloader: dataloader for training set, if train_percent set to 1 this is the only return and contains all samples for pretraining
+  - testloader: dataloader for test set, only returned if train_percent set to 1 this does not return
+  '''
   if train_percent == 1:
      return DataLoader(dataset, batch_size=batchsize, shuffle=True)
 
@@ -113,15 +191,32 @@ def load_train_test(dataset, train_percent = .8, batchsize = 1):
   test_dataloader = DataLoader(test_dataset, batch_size=batchsize, shuffle=False)
 
   return train_dataloader, test_dataloader
-
+'''
+Runnning this file will establish the split of pretrain data and true negative data
+So there is no need to call get_split outside of this file (its slow)
+Running this file assumes that data is already extracted using the get_data.py script
+Running this file also assumes that the splits\ directory exists (lazy)
+Assumed fie structure:
+dataset\Medical Imaging Dataset
+ - disease{i} for i in {1, ..., 18}
+'''
 if __name__ == '__main__':
+  start = time.perf_counter()
   p, h, p_map, h_map = load_data()
+  time_elapsed = time.perf_counter() - start
+  print(f"took: {convert(time_elapsed)} to load data" )
+  ten, ninety = get_split(p,  store_indices=True)
+  time_elapsed = time.perf_counter() - start
+  print(f"took: {convert(time_elapsed)} to load data" )
+  print(f"{100 * (len(ninety)/ len(p)):.2f}% pretrain")
+  print(f"{100 * (len(ten) / len(p)):.2f}% true negatives")
 
-  p_train, p_test = load_train_test(p,batchsize=32)
+  #p, h, _, _ = load_data()
+
+  pretrain = load_indices(p, "splits/pretrain_indices.json")
+  true_neg = load_indices(p, "splits/true_neg_indices.json")
+
+  print(len(pretrain), len(true_neg))
+  
 
 
-  ids = []
-  for x,i in p:
-    if i not in ids:
-       print(i)
-       ids.append(i)

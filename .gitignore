@@ -1,2 +1,6 @@
 data_set/
-Medical Imaging Datset/
+Original Dataset/
+splits/
+test.py
+__pycache__/
+disease_names.csv
