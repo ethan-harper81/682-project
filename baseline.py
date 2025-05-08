@@ -72,10 +72,12 @@ for img, label in test_data:
   with torch.no_grad():
     outputs = model(img)
 
-    prob, predicted = torch.max(outputs, 1)
-
+    _, predicted = torch.max(outputs, 1)
+    prob = torch.nn.functional.softmax(outputs, dim = 1)
+    pos_prob = prob[:, 1]
+    
     y_true.extend(label.cpu().numpy())
-    y_probs.extend(prob.cpu().numpy())
+    y_probs.extend(pos_prob.cpu().numpy())
     pred_labels.extend(predicted.cpu().numpy())
 
 print("Accuracy:", accuracy_score(y_true, pred_labels))
