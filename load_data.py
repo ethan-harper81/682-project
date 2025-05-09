@@ -3,7 +3,7 @@ import torch
 import torchio as tio
 import SimpleITK as sitk
 from torchvision import datasets, transforms
-from torch.utils.data import Dataset, DataLoader, Subset, random_split
+from torch.utils.data import Dataset, DataLoader, Subset, random_split, ConcatDataset
 from skimage.filters import threshold_otsu
 import matplotlib.pyplot as plt
 from collections import defaultdict
@@ -166,6 +166,59 @@ def get_split(dataset, split_val = .1, map_zero = True, store_indices = False, s
         json.dump(subset2_indices, f) 
   return subset1, subset2
 
+def get_labels(sett):
+   labels = []
+   for img, label in sett:
+      if label not in labels:
+         labels.append(label)
+   return labels
+
+def get_experiment_data(setA, setB, n = 5, seed = 100):
+  #properly label data
+  # pos_map = {0:1}
+  neg_map = {old: 0 for old in get_labels(setA)}
+  # setA = RelabeledData(setA, neg_map)
+  # setB = RelabeledData(setB, pos_map)
+
+  test_pos, set_Bp = get_split(setB, split_val=.8, map_zero=False)
+  test_neg, set_Ap = get_split(setA, split_val=.8, map_zero=False)# all negative examples map zero
+
+  #relabeld test_neg so all samples have label 0
+  test_neg = RelabeledData(test_neg, neg_map)
+
+  #DO NOT TOUCH test_pos or test_neg
+  baseline_pos, unlabeled_pos = get_split(set_Bp, split_val=n, map_zero=False) #also pos_support
+  baseline_neg, unlabeled_neg = get_split(set_Ap, split_val=n, map_zero=False) 
+
+  #after getting classwise split, relabel so all negative samples are 0
+  baseline_neg = RelabeledData(baseline_neg, neg_map)
+  unlabeled_neg = RelabeledData(unlabeled_neg, neg_map)
+
+  support_pos = baseline_pos # baseline_pos
+  support_neg = None
+  
+  random.seed()
+  support_neg_ids = random.sample(range(len(baseline_neg)), n*2)
+  support_neg = [baseline_neg[x] for x in support_neg_ids]
+
+  print(len(setB), len(setA))
+  print(f"positive test = {len(test_pos)}: {len(test_pos)/ len(setB)}, neg test = {len(test_neg)}: {len(test_neg)/ len(setA)}")
+  print(f"B prime = {len(set_Bp)}: {len(set_Bp)/ len(setB)}, A prime  = {len(set_Ap)}: {len(set_Ap)/ len(setA)}")
+  print(f"positive support: {len(support_pos)}, negative_support: {len(support_neg)}")
+  print(f"baselin_pos: {len(baseline_pos)}, baseline_neg: {len(baseline_neg)}")
+
+  query = ConcatDataset([unlabeled_neg, unlabeled_pos]) 
+  support = ConcatDataset([support_pos, support_neg])
+  test_data = ConcatDataset([test_neg, test_pos])
+  baseline_finetune = ConcatDataset([baseline_neg, baseline_pos])
+
+  return (
+     test_data,
+     baseline_finetune,
+     support,
+     query
+  )
+
 def load_train_test(dataset, train_percent = .8, batchsize = 1):
   '''
   Loads the training and testing set for pretraining
@@ -201,12 +254,20 @@ dataset\Medical Imaging Dataset
  - disease{i} for i in {1, ..., 18}
 '''
 if __name__ == '__main__':
-  start = time.perf_counter()
-  nontarget_data, target_data, nontarget_map, target_map = load_data()
-  time_elapsed = time.perf_counter() - start
-  print(f"took: {convert(time_elapsed)} to load data" )
-  ten, ninety = get_split(nontarget_data,  store_indices=True)
-  time_elapsed = time.perf_counter() - start
-  print(f"took: {convert(time_elapsed)} to load data" )
-  print(f"{100 * (len(ninety)/ len(nontarget_data)):.2f}% pretrain")
-  print(f"{100 * (len(ten) / len(nontarget_data)):.2f}% true negatives")
+  # start = time.perf_counter()
+  # nontarget_data, target_data, nontarget_map, target_map = load_data()
+  # time_elapsed = time.perf_counter() - start
+  # print(f"took: {convert(time_elapsed)} to load data" )
+  # ten, ninety = get_split(nontarget_data,  store_indices=True)
+  # time_elapsed = time.perf_counter() - start
+  # print(f"took: {convert(time_elapsed)} to load data" )
+  # print(f"{100 * (len(ninety)/ len(nontarget_data)):.2f}% pretrain")
+  # print(f"{100 * (len(ten) / len(nontarget_data)):.2f}% true negatives")
+
+  nontgt_data, tgt_data, _,_ = load_data()
+  pretrian, setA = get_split(nontgt_data, map_zero=False)
+  data = get_experiment_data(setA, tgt_data)
+
+  sets= {0: "test data", 1: "baseline_finetune", 2: "support", 3: "query"}
+  for i, point in enumerate(data):
+     print(f"{sets[i]} has labels: {get_labels(point)}")
